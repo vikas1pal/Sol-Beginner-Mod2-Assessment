@@ -1,4 +1,4 @@
-// import functionalities
+
 import './App.css';
 import {
   Connection,
@@ -78,7 +78,7 @@ export default function App() {
 
   // create a state variable for our connection
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-  
+
   // connection to use with local solana test validator
   // const connection = new Connection("http://127.0.0.1:8899", "confirmed");
 
@@ -97,22 +97,28 @@ export default function App() {
    */
   const createSender = async () => {
     // create a new Keypair
-
-
+    const newPair = Keypair.generate();
+    const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+    setSenderKeypair(newPair);
     console.log('Sender account: ', senderKeypair!.publicKey.toString());
-    console.log('Airdropping 2 SOL to Sender Wallet');
+
 
     // save this new KeyPair into this state variable
-    setSenderKeypair(/*KeyPair here*/);
 
-    // request airdrop into this new account
-    
-
-    const latestBlockHash = await connection.getLatestBlockhash();
-
-    // now confirm the transaction
-
-    console.log('Wallet Balance: ' + (await connection.getBalance(senderKeypair!.publicKey)) / LAMPORTS_PER_SOL);
+    try {
+      // request airdrop into this new account
+      console.log('Airdropping 2 SOL to Sender Wallet');
+      const fromAirDropSignature = await connection.requestAirdrop(
+        newPair.publicKey,
+        2 * LAMPORTS_PER_SOL
+      );
+      // now confirm the transaction
+      await connection.confirmTransaction(fromAirDropSignature, "confirmed");
+      console.log('NEW Wallet Balance: ' + await connection.getBalance(senderKeypair!.publicKey) / LAMPORTS_PER_SOL);
+    }
+    catch (error) {
+      console.log("error in airdrop");
+    }
   }
 
   /**
@@ -129,7 +135,9 @@ export default function App() {
         // connect to phantom wallet and return response which includes the wallet public key
 
         // save the public key of the phantom wallet to the state variable
-        setReceiverPublicKey(/*PUBLIC KEY*/);
+        const response = await solana.connect();
+        setReceiverPublicKey(new PublicKey(response.publicKey));
+        console.log("Wallet connected");
       } catch (err) {
         console.log(err);
       }
@@ -160,15 +168,41 @@ export default function App() {
    * @description transfer SOL from sender wallet to connected wallet.
    * This function is called when the Transfer SOL to Phantom Wallet button is clicked
    */
-  const transferSol = async () => {    
-    
+  const transferSol = async () => {
+    if (!receiverPublicKey) {
+      console.log("Receiver public key is undefined", 'error');
+      return;
+    }
+
     // create a new transaction for the transfer
+    const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+    const from = Keypair.fromSecretKey(senderKeypair!.secretKey);
+    try {
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: from.publicKey,
+          toPubkey: receiverPublicKey,
+          lamports: 1 * LAMPORTS_PER_SOL,
+        })
+      );
 
-    // send and confirm the transaction
+      // send and confirm the transaction
+      console.log("Sending transaction...");
+      const signature = await sendAndConfirmTransaction(
+        connection,
+        transaction,
+        [from],
+        { commitment: "confirmed" }
+      );
 
-    console.log("transaction sent and confirmed");
-    console.log("Sender Balance: " + await connection.getBalance(senderKeypair!.publicKey) / LAMPORTS_PER_SOL);
-    console.log("Receiver Balance: " + await connection.getBalance(receiverPublicKey!) / LAMPORTS_PER_SOL);
+
+      console.log("transaction sent and confirmed");
+      console.log("Sender Balance: " + await connection.getBalance(senderKeypair!.publicKey) / LAMPORTS_PER_SOL);
+      console.log("Receiver Balance: " + await connection.getBalance(receiverPublicKey!) / LAMPORTS_PER_SOL);
+    }
+    catch (error) {
+      console.log("Error sending transaction: " + error, 'error');
+    }
   };
 
   // HTML code for the app
@@ -176,7 +210,7 @@ export default function App() {
     <div className="App">
       <header className="App-header">
         <h2>Module 2 Assessment</h2>
-        <span className ="buttons">
+        <span className="buttons">
           <button
             style={{
               fontSize: "16px",
@@ -220,17 +254,17 @@ export default function App() {
             </div>
           )}
           {provider && receiverPublicKey && senderKeypair && (
-          <button
-            style={{
-              fontSize: "16px",
-              padding: "15px",
-              fontWeight: "bold",
-              borderRadius: "5px",
-            }}
-            onClick={transferSol}
-          >
-            Transfer SOL to Phantom Wallet
-          </button>
+            <button
+              style={{
+                fontSize: "16px",
+                padding: "15px",
+                fontWeight: "bold",
+                borderRadius: "5px",
+              }}
+              onClick={transferSol}
+            >
+              Transfer SOL to Phantom Wallet
+            </button>
           )}
         </span>
         {!provider && (
